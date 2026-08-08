@@ -97,7 +97,7 @@ See `app/config.py`. The path is resolved in this order:
 
 1. `ENV_FILE` environment variable (explicit override).
 2. `.env` in current working directory or any parent directory (local dev).
-3. `/app/.env` (production mount point from the `tomanotas-secrets` Secret).
+3. `/app/.env` (production mount point from the `fcm-worker-secrets` Secret).
 
 ## Database migrations
 
@@ -213,15 +213,39 @@ Configuration is read from one of three sources (see `.env` resolution order):
 
 ## Secrets and config (k8s)
 
-This project follows the **same pattern as TomaNotas, cronogramas-mcp, and
-manejo-finanzas-mcp** in this cluster:
+This project uses TWO Secrets, both project-specific (not shared with other
+apps in the cluster):
 
-1. **`.env` file** mounted as a file from a shared Secret.
-2. **FCM service account JSON** mounted as a file from a separate Secret.
+1. **`fcm-worker-secrets`** — contains a `.env` key with env vars in `KEY=VALUE` format.
+2. **`fcm-credentials`** — contains a `firebase-sa.json` key with the FCM service account.
+
+Both are mounted as files via `volumeMounts` with `subPath`:
+
+```yaml
+# in cronjob.yml
+volumes:
+  - name: env-file
+    secret:
+      secretName: fcm-worker-secrets
+  - name: fcm-sa
+    secret:
+      secretName: fcm-credentials
+
+volumeMounts:
+  - name: env-file
+    mountPath: /app/.env
+    subPath: .env
+    readOnly: true
+  - name: fcm-sa
+    mountPath: /secrets
+    readOnly: true
+```
+
+### Create the Secrets
 
 ```bash
-# 1. Create the shared env Secret (same name as the other projects)
-kubectl create secret generic tomanotas-secrets \
+# 1. Create the .env Secret
+kubectl create secret generic fcm-worker-secrets \
   --from-file=.env=./.env \
   -n prod
 
