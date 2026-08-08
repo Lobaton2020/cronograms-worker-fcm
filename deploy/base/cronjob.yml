@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fcm-worker
+  namespace: prod
+  labels:
+    app: fcm-worker
+    component: cronogram-notifier
+spec:
+  schedule: "*/1 * * * *"
+  timeZone: "America/Bogota"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 30
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  suspend: false
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 50
+      template:
+        metadata:
+          labels:
+            app: fcm-worker
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: fcm-worker
+          hostNetwork: true
+          containers:
+            - name: worker
+              image: aflobaton/cronograms-worker-fcm:latest
+              imagePullPolicy: IfNotPresent
+              volumeMounts:
+                # .env file - mounted as a file from the `fcm-worker-secrets`
+                # Secret, which contains a `.env` key with KEY=VALUE lines.
+                - name: env-file
+                  mountPath: /app/.env
+                  subPath: .env
+                  readOnly: true
+                # FCM service account JSON - separate Secret.
+                - name: fcm-sa
+                  mountPath: /secrets
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: "25m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "128Mi"
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 10001
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: env-file
+              secret:
+                secretName: fcm-worker-secrets
+            - name: fcm-sa
+              secret:
+                secretName: fcm-credentials
